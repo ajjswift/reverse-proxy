@@ -2,7 +2,8 @@ name: build-and-release
 
 # Build (and test) on every push to main. When the version in package.json /
 # src/version.ts has been bumped to one that doesn't yet have a release, publish
-# the compiled Linux binaries + checksums to the Releases tab as v<version>.
+# install.sh, compiled Linux binaries, and checksums to the Releases tab as
+# v<version>.
 on:
   push:
     branches: [main]
@@ -89,11 +90,13 @@ jobs:
               echo "| \`$(basename "$f")\` | \`${sum}\` |"
             done
             echo
-            echo "Install/upgrade with \`install.sh\` (see README) using the matching"
-            echo "\`BINARY_URL\` and \`CHECKSUM_URL\` from the assets below."
+            echo "Install/upgrade with the attached \`install.sh\` (see README) using"
+            echo "the matching \`BINARY_URL\` and \`CHECKSUM_URL\` for the host"
+            echo "architecture from the assets below."
           } > release-notes.md
 
           gh release create "$TAG" \
+            install.sh \
             dist/proxy-agent-*-linux-x64 \
             dist/proxy-agent-*-linux-x64.sha256 \
             dist/proxy-agent-*-linux-arm64 \

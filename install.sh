@@ -6,15 +6,18 @@
 # systemd service.
 #
 # Required environment/flags:
-#   BINARY_URL           URL of the compiled proxy-agent binary
-#   BINARY_SHA256        Expected SHA256 hex of the binary  (or use CHECKSUM_URL)
-#   CHECKSUM_URL         URL of a "<sha256>  <name>" file    (alternative to BINARY_SHA256)
 #   API_KEY              Bearer token the panel presents to the control API
 #   HOSTNAME             The agent's own public FQDN
 #   PANEL_CALLBACK_URL   URL the agent POSTs status to
 #   NODE_TOKEN           Bearer token the agent presents on callbacks
 #   LETSENCRYPT_EMAIL    Email for Let's Encrypt registration
 # Optional:
+#   BINARY_URL           URL of the compiled proxy-agent binary. Omit to auto-
+#                        resolve the right one for this machine's CPU from the
+#                        latest GITHUB_REPO release.
+#   GITHUB_REPO          Repo to resolve the binary from (default ajjswift/reverse-proxy)
+#   BINARY_SHA256        Expected SHA256 hex of the binary  (or use CHECKSUM_URL)
+#   CHECKSUM_URL         URL of a "<sha256>  <name>" file    (alternative to BINARY_SHA256)
 #   CONTROL_PORT         Control API port (default 8443)
 #   ACME_STAGING         "true" to use Let's Encrypt staging (default false)
 #   STATE_DIR            State/cert directory (default /var/lib/proxy-agent)
@@ -65,22 +68,48 @@ if [[ -r /etc/os-release ]]; then
   esac
 fi
 
-: "${BINARY_URL:?BINARY_URL is required}"
 : "${API_KEY:?API_KEY is required}"
 : "${HOSTNAME:?HOSTNAME is required}"
 : "${PANEL_CALLBACK_URL:?PANEL_CALLBACK_URL is required}"
 : "${NODE_TOKEN:?NODE_TOKEN is required}"
 : "${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL is required}"
 
-if [[ -z "${BINARY_SHA256:-}" && -z "${CHECKSUM_URL:-}" ]]; then
-  die "provide BINARY_SHA256 or CHECKSUM_URL to verify the download"
-fi
-
 # --- Dependencies ------------------------------------------------------------
 info "installing dependencies (certbot, curl, ca-certificates)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq certbot curl ca-certificates >/dev/null
+
+# --- Resolve binary + checksum from the release ------------------------------
+# The compiled binaries and their .sha256 files ship in the same GitHub release
+# as this installer, so we pick the one matching this machine's architecture
+# automatically. Override any of this by passing BINARY_URL (and optionally
+# BINARY_SHA256 or CHECKSUM_URL), or point at a different repo with GITHUB_REPO.
+GITHUB_REPO="${GITHUB_REPO:-ajjswift/reverse-proxy}"
+if [[ -z "${BINARY_URL:-}" ]]; then
+  case "$(uname -m)" in
+    x86_64|amd64) ARCH="x64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *) die "unsupported CPU architecture '$(uname -m)'; pass BINARY_URL explicitly" ;;
+  esac
+  info "resolving latest proxy-agent binary for linux-${ARCH} from ${GITHUB_REPO}"
+  RELEASE_JSON="$(curl -fsSL -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com/repos/${GITHUB_REPO}/releases/latest")" \
+    || die "could not query the GitHub releases API for ${GITHUB_REPO}"
+  # Each browser_download_url is on its own line; the binary asset ends in the
+  # arch, its checksum in "<arch>.sha256", so an end-anchored match separates them.
+  BINARY_URL="$(printf '%s' "${RELEASE_JSON}" \
+    | grep -o 'https://github.com/[^"]*' | grep "linux-${ARCH}$" | head -n1)"
+  [[ -n "${BINARY_URL}" ]] || die "no linux-${ARCH} binary found in the latest ${GITHUB_REPO} release"
+  if [[ -z "${BINARY_SHA256:-}" && -z "${CHECKSUM_URL:-}" ]]; then
+    CHECKSUM_URL="${BINARY_URL}.sha256"
+  fi
+  info "using ${BINARY_URL}"
+fi
+
+if [[ -z "${BINARY_SHA256:-}" && -z "${CHECKSUM_URL:-}" ]]; then
+  die "provide BINARY_SHA256 or CHECKSUM_URL to verify the download"
+fi
 
 # --- Service user ------------------------------------------------------------
 if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then

@@ -6,8 +6,8 @@ name: build-and-release
 on:
   push:
     branches: [main]
-  # Allow cutting a release by pushing a tag directly, too.
-  tags: ["v*"]
+    # Allow cutting a release by pushing a tag directly, too.
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

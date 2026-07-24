@@ -1,0 +1,55 @@
+[Unit]
+Description=Managed reverse-proxy agent
+Documentation=https://example.com/proxy-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxy-agent
+Group=proxy-agent
+ExecStart=/usr/local/bin/proxy-agent --config /etc/proxy-agent/config.json
+Restart=always
+RestartSec=3
+# Backoff: if it crash-loops, widen the window before giving up.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+# Graceful shutdown: index.ts drains for up to 25s, so allow a little more.
+TimeoutStopSec=45
+KillSignal=SIGTERM
+
+# --- Privilege: run unprivileged but keep the one capability needed to bind
+# the low ports 80/443. AmbientCapabilities grants it to the process; the
+# CapabilityBoundingSet prevents acquiring anything else.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+
+# --- Filesystem hardening: read-only system, with only the agent's own state
+# and certbot dirs writable.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/proxy-agent
+# certbot writes logs; keep them inside the state dir (config points there).
+
+# --- Additional sandboxing.
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# --- Environment: config also readable from the file; env can override.
+EnvironmentFile=-/etc/proxy-agent/agent.env
+
+[Install]
+WantedBy=multi-user.target

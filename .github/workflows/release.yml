@@ -1,0 +1,103 @@
+name: build-and-release
+
+# Build (and test) on every push to main. When the version in package.json /
+# src/version.ts has been bumped to one that doesn't yet have a release, publish
+# the compiled Linux binaries + checksums to the Releases tab as v<version>.
+on:
+  push:
+    branches: [main]
+  # Allow cutting a release by pushing a tag directly, too.
+  tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create releases + tags
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.8" # pin for reproducible artifact hashes
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Build Linux binaries (x64 + arm64)
+        run: bun run build
+
+      - name: Resolve version
+        id: ver
+        run: |
+          VERSION="$(bun --eval 'import {VERSION} from "./src/version.ts"; process.stdout.write(VERSION)')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Upload build artifacts (always, for every push)
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-agent-${{ steps.ver.outputs.version }}
+          path: |
+            dist/proxy-agent-*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Check whether this version is already released
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.ver.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.ver.outputs.tag }} already exists — skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          {
+            echo "Compiled reverse-proxy agent \`${TAG}\`."
+            echo
+            echo "## Artifacts"
+            echo
+            echo "| File | SHA256 |"
+            echo "|------|--------|"
+            for f in dist/proxy-agent-*-linux-x64 dist/proxy-agent-*-linux-arm64; do
+              sum="$(awk '{print $1}' "${f}.sha256")"
+              echo "| \`$(basename "$f")\` | \`${sum}\` |"
+            done
+            echo
+            echo "Install/upgrade with \`install.sh\` (see README) using the matching"
+            echo "\`BINARY_URL\` and \`CHECKSUM_URL\` from the assets below."
+          } > release-notes.md
+
+          gh release create "$TAG" \
+            dist/proxy-agent-*-linux-x64 \
+            dist/proxy-agent-*-linux-x64.sha256 \
+            dist/proxy-agent-*-linux-arm64 \
+            dist/proxy-agent-*-linux-arm64.sha256 \
+            --title "$TAG" \
+            --notes-file release-notes.md \
+            --target "${{ github.sha }}"

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# local dev state / test scratch
+.state/
+test-state/
+*.pem
+!test/fixtures/*.pem

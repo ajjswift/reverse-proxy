@@ -1,0 +1,25 @@
+{
+  "name": "proxy-agent",
+  "version": "0.1.0",
+  "description": "Managed reverse-proxy agent: panel-controlled HTTPS termination, Let's Encrypt certs via certbot, and DNS/status reporting. Compiles to a self-contained Linux binary with Bun.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "proxy-agent": "src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "bun test",
+    "build": "bash scripts/build.sh"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.8",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}

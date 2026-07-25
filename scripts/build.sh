@@ -15,14 +15,15 @@ if [[ "$VERSION" != "$PKG_VERSION" ]]; then
 fi
 
 OUT_DIR="dist"
-ENTRY="src/index.ts"
+AGENT_ENTRY="src/index.ts"
+CTL_ENTRY="src/cli.ts"
 mkdir -p "$OUT_DIR"
 
 build_one() {
-  local target="$1" suffix="$2"
-  local out="$OUT_DIR/proxy-agent-${VERSION}-${suffix}"
-  echo ">> building $suffix ($target)"
-  bun build "$ENTRY" \
+  local entry="$1" name="$2" target="$3" suffix="$4"
+  local out="$OUT_DIR/${name}-${VERSION}-${suffix}"
+  echo ">> building ${name} ${suffix} ($target)"
+  bun build "$entry" \
     --compile \
     --target="$target" \
     --minify \
@@ -38,8 +39,10 @@ build_one() {
   echo "   -> $out.sha256"
 }
 
-build_one "bun-linux-x64" "linux-x64"
-build_one "bun-linux-arm64" "linux-arm64"
+build_one "$AGENT_ENTRY" "proxy-agent"     "bun-linux-x64"   "linux-x64"
+build_one "$AGENT_ENTRY" "proxy-agent"     "bun-linux-arm64" "linux-arm64"
+build_one "$CTL_ENTRY"   "proxy-agent-ctl" "bun-linux-x64"   "linux-x64"
+build_one "$CTL_ENTRY"   "proxy-agent-ctl" "bun-linux-arm64" "linux-arm64"
 
 echo
 echo "Artifacts in $OUT_DIR/:"

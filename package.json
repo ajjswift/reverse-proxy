@@ -5,11 +5,13 @@
   "type": "module",
   "private": true,
   "bin": {
-    "proxy-agent": "src/index.ts"
+    "proxy-agent": "src/index.ts",
+    "proxy-agent-ctl": "src/cli.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts",
+    "ctl": "bun run src/cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "bun test",

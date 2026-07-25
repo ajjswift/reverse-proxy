@@ -17,18 +17,27 @@ import { ControlServer, type ControlCert } from "./control-api.ts";
 import { CallbackSender } from "./callback.ts";
 import { buildCallbackBody } from "./status.ts";
 
+import { runCli } from "./cli.ts";
+
 const RENEW_INTERVAL_MS = 12 * 60 * 60 * 1000; // twice daily, standard for certbot
 const DRAIN_TIMEOUT_MS = 25_000;
 
 function printUsage(): void {
   process.stdout.write(
     `proxy-agent ${VERSION}\n\n` +
-      `Usage: proxy-agent [--config <path>]\n\n` +
+      `Usage: proxy-agent [--config <path>]\n` +
+      `       proxy-agent ctl <command> [args]\n\n` +
       `Options:\n` +
       `  --config <path>   Path to config.json (default /etc/proxy-agent/config.json,\n` +
       `                    or $PROXY_AGENT_CONFIG)\n` +
       `  --version         Print version and exit\n` +
-      `  --help            Print this help and exit\n`,
+      `  --help            Print this help and exit\n\n` +
+      `Subcommands:\n` +
+      `  ctl status        Show agent health and uptime\n` +
+      `  ctl routes        List all routes with DNS/cert/proxy status\n` +
+      `  ctl route <id>    Show detailed status for a single route\n` +
+      `  ctl state         Read persisted state file (works when agent is down)\n` +
+      `  ctl config        Show active config (secrets redacted)\n`,
   );
 }
 
@@ -40,8 +49,13 @@ function readPair(certPath: string, keyPath: string): ControlCert | null {
   }
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export async function main(args: string[] = process.argv.slice(2)): Promise<void> {
+  // Delegate to the built-in CLI when invoked as `proxy-agent ctl ...`.
+  if (args[0] === "ctl") {
+    await runCli(args.slice(1));
+    return;
+  }
+
   if (args.includes("--version") || args.includes("-v")) {
     process.stdout.write(VERSION + "\n");
     return;
@@ -229,7 +243,9 @@ async function main(): Promise<void> {
   log.info("proxy-agent ready");
 }
 
-main().catch((err) => {
-  log.error("fatal error during startup", { err: (err as Error).message, stack: (err as Error).stack });
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    log.error("fatal error during startup", { err: (err as Error).message, stack: (err as Error).stack });
+    process.exit(1);
+  });
+}

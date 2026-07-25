@@ -70,7 +70,9 @@ function loadConfigSafe(): Config {
 // ── API client ──────────────────────────────────────────────────────────────
 
 async function apiGet(config: Config, path: string): Promise<unknown> {
-  const url = `https://${config.hostname}:${config.control_port}/v1/${path}`;
+  // This CLI runs on the node and inspects the already-running local agent.
+  // Avoid DNS/hairpin routing through the node's public hostname.
+  const url = `https://127.0.0.1:${config.control_port}/v1/${path}`;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -230,9 +232,10 @@ function cmdConfig(config: Config): void {
 
 function usage(): never {
   console.log(`
-${c.bold}proxy-agent-ctl${c.reset} — inspect a running reverse-proxy agent
+${c.bold}proxy-agent ctl${c.reset} — inspect a running reverse-proxy agent
 
 ${c.bold}USAGE${c.reset}
+  proxy-agent ctl <command> [args]
   proxy-agent-ctl <command> [args]
 
 ${c.bold}COMMANDS${c.reset}
@@ -247,18 +250,17 @@ ${c.bold}OPTIONS${c.reset}
   ${c.dim}PROXY_AGENT_CONFIG=/path/to/config.json${c.reset}   Override config file path
 
 ${c.bold}EXAMPLES${c.reset}
-  proxy-agent-ctl status
-  proxy-agent-ctl routes
-  proxy-agent-ctl route 550e8400-e29b-41d4-a716-446655440000
-  proxy-agent-ctl state
+  proxy-agent ctl status
+  proxy-agent ctl routes
+  proxy-agent ctl route 550e8400-e29b-41d4-a716-446655440000
+  proxy-agent ctl state
 `);
   process.exit(0);
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export async function runCli(args: string[] = process.argv.slice(2)): Promise<void> {
   const cmd = args[0]?.toLowerCase();
 
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") usage();
@@ -292,10 +294,14 @@ async function main(): Promise<void> {
       break;
 
     default:
-      die(`unknown command: ${cmd}\nRun proxy-agent-ctl help for usage.`);
+      die(`unknown command: ${cmd}\nRun proxy-agent ctl help for usage.`);
   }
 }
 
-main().catch((err) => {
-  die((err as Error).message);
-});
+// Keep this file usable as the standalone proxy-agent-ctl build while making
+// imports from the main proxy-agent entry point side-effect-free.
+if (import.meta.main) {
+  runCli().catch((err) => {
+    die((err as Error).message);
+  });
+}

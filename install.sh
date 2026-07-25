@@ -21,7 +21,6 @@
 #   CONTROL_PORT         Control API port (default 8443)
 #   ACME_STAGING         "true" to use Let's Encrypt staging (default false)
 #   STATE_DIR            State/cert directory (default /var/lib/proxy-agent)
-#   SERVICE_USER         Service account name (default proxy-agent)
 #   LOG_LEVEL            debug|info|warn|error (default info)
 #
 # Example:
@@ -38,7 +37,6 @@ CONFIG_DIR="/etc/proxy-agent"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 UNIT_FILE="/etc/systemd/system/proxy-agent.service"
 STATE_DIR="${STATE_DIR:-/var/lib/proxy-agent}"
-SERVICE_USER="${SERVICE_USER:-proxy-agent}"
 CONTROL_PORT="${CONTROL_PORT:-8443}"
 ACME_STAGING="${ACME_STAGING:-false}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
@@ -111,15 +109,10 @@ if [[ -z "${BINARY_SHA256:-}" && -z "${CHECKSUM_URL:-}" ]]; then
   die "provide BINARY_SHA256 or CHECKSUM_URL to verify the download"
 fi
 
-# --- Service user ------------------------------------------------------------
-if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
-  info "creating service user ${SERVICE_USER}"
-  useradd --system --home-dir "${STATE_DIR}" --shell /usr/sbin/nologin "${SERVICE_USER}"
-fi
 
 # --- Directories -------------------------------------------------------------
 info "creating directories"
-install -d -m 0750 -o "${SERVICE_USER}" -g "${SERVICE_USER}" "${STATE_DIR}"
+install -d -m 0750 "${STATE_DIR}"
 install -d -m 0755 "${CONFIG_DIR}"
 
 # --- Download + verify binary ------------------------------------------------
@@ -165,8 +158,8 @@ cat > "${CONFIG_FILE}.new" <<JSON
 }
 JSON
 mv -f "${CONFIG_FILE}.new" "${CONFIG_FILE}"
-chown root:"${SERVICE_USER}" "${CONFIG_FILE}"
-chmod 0640 "${CONFIG_FILE}"
+chown root:root "${CONFIG_FILE}"
+chmod 0600 "${CONFIG_FILE}"
 
 # --- systemd unit ------------------------------------------------------------
 info "installing systemd unit"
@@ -178,8 +171,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=${SERVICE_USER}
-Group=${SERVICE_USER}
+User=root
+Group=root
 ExecStart=${BIN_PATH} --config ${CONFIG_FILE}
 Restart=always
 RestartSec=3
@@ -187,9 +180,6 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 TimeoutStopSec=45
 KillSignal=SIGTERM
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
@@ -201,7 +191,6 @@ ProtectClock=true
 ProtectHostname=true
 RestrictNamespaces=true
 RestrictRealtime=true
-RestrictSUIDSGID=true
 LockPersonality=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallFilter=@system-service
